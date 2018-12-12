@@ -1,0 +1,640 @@
+#include "utils.h"
+#include "define.h"
+
+//#if defined(ORB_FT) || defined(BRISK_FT)
+//	//extern BFMatcher matcher;
+//	extern FlannBasedMatcher matcher;
+//#else
+extern BFMatcher matcher;
+extern int hist_cmp;
+extern string file_ext;
+//#endif
+//extern FlannBasedMatcher matcher;
+
+string GetFolder(const string& path)
+{
+	return path.substr(0, path.find_last_of("\\/")+1);
+}
+// Get image names from a wildcard. Eg: GetNames("D:\\*.jpg", imgNames);
+int GetNames(const string& nameWC, vector<string>& names)
+{
+	names.clear();
+	WIN32_FIND_DATA fileFindData;
+	HANDLE hFind = ::FindFirstFileA(nameWC.c_str(), &fileFindData);
+	if (hFind == INVALID_HANDLE_VALUE)
+		return 0;
+	do 
+	{
+		if (fileFindData.cFileName[0] == '.')
+			continue; // filter the '..' and '.' in the path
+		if (fileFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+			continue; // Ignore sub-folders
+		names.push_back(fileFindData.cFileName);
+	} while (::FindNextFile(hFind, &fileFindData));
+	FindClose(hFind);
+	return (int)names.size();
+}
+int GetNames(const string &nameW, vector<string> &names, string &dir)
+{
+	dir = GetFolder(nameW);
+	return GetNames(nameW, names);
+}
+string GetNameNE(const string& path)
+{
+	int start = path.find_last_of("\\/")+1;
+	int end = path.find_last_of('.');
+	if (end >= 0)
+		return path.substr(start, end - start);
+	else
+		return path.substr(start,  path.find_last_not_of(' ')+1 - start);
+}
+int GetNamesNE(const string& nameWC, vector<string> &names, string &dir)
+{
+	int fNum = GetNames(nameWC, names, dir);
+	for (int i = 0; i < fNum; i++)
+		names[i] = GetNameNE(names[i]);
+	return fNum;
+}
+int GetNamesNE(const string& nameWC, vector<string> &names)
+{
+	string dir;
+	return GetNamesNE(nameWC, names, dir);
+}
+
+int readGrayImage(string filename, Mat &fimg){
+
+	Mat img;
+	Mat rotatedImage;
+	img = imread( filename, CV_LOAD_IMAGE_GRAYSCALE );
+	if( !img.data )
+	{ std::cout<< " --(!) Error reading images " << std::endl; return -1; }
+
+	Size im_size = img.size();
+
+	// resize image
+	im_size = img.size();
+
+	double rs_ratio = 1;
+
+	if(im_size.height < MAX_HEIGHT_WIDTH_IMG){
+		rs_ratio = MAX_HEIGHT_WIDTH_IMG/im_size.height;
+
+		Size new_size(0,0);
+		new_size.width = im_size.width*rs_ratio;
+		new_size.height = im_size.height*rs_ratio;
+
+		resize(img,fimg,new_size,0,0);	
+	}else{
+		fimg = img.clone();
+	}
+	
+	return 0;
+}
+
+int readGrayAndHSVImage(string filename, Mat &gray_img, Mat &hsv_img){
+
+	Mat img;
+	Mat rotatedImage;
+	img = imread( filename, CV_LOAD_IMAGE_COLOR);
+	
+	if( !img.data )
+	{ std::cout<< " --(!) Error reading images " << std::endl; return -1; }
+
+	Size im_size = img.size();
+
+	// resize image
+	im_size = img.size();
+
+#if (RESIZE_IMAGE == TRUE)
+	double max_size = im_size.height;
+	double rs_ratio = 1;
+
+	if(im_size.width > im_size.height){
+		max_size = im_size.width;		
+	}
+	rs_ratio = MAX_HEIGHT_WIDTH_IMG/max_size;
+
+	Size new_size(0,0);
+	new_size.width = im_size.width*rs_ratio;
+	new_size.height = im_size.height*rs_ratio;
+
+	resize(img,img,new_size,0,0);
+#endif
+
+//#ifdef RESIZE
+//	Size im_size = img.size();
+//
+//	// resize image
+//	im_size = img.size();
+//
+//	double max_size = im_size.height;
+//	double rs_ratio = 1;
+//
+//	if(im_size.width > im_size.height){
+//		max_size = im_size.width;		
+//	}
+//	rs_ratio = MAX_HEIGHT_IMG/max_size;
+//
+//	Size new_size(0,0);
+//	new_size.width = im_size.width*rs_ratio;
+//	new_size.height = im_size.height*rs_ratio;
+//	
+//	resize(img,img,new_size,0,0);
+//#endif
+
+	// convert to GRAY
+	cvtColor(img,gray_img, CV_RGB2GRAY);
+
+	// convert to HSV color
+	cvtColor(img,hsv_img,CV_RGB2HSV);
+	
+	// get significant bit-plane image
+	//Mat hsv_img_sg = hsv_img.clone();
+	//int p = 5;	
+	//for(int x=0;x<hsv_img.cols;x++){
+	//	for(int y=0;y<hsv_img.rows;y++){
+
+	//		Vec3b hsv_val = hsv_img.at<Vec3b>(y,x);
+	//		double h = hsv_val[0];
+	//		double s = hsv_val[1];
+	//		double v = hsv_val[2];
+	//		double h1 = 0,v1 = 0,s1 = 0;
+	//		for(int ip = 4; ip < 8; ip++){
+	//			h1 += fmod(floor(h/pow(2.0, ip)), 2)*pow(2.0,ip);
+	//			s1 += fmod(floor(s/pow(2.0, ip)), 2)*pow(2.0,ip);
+	//			v1 += fmod(floor(v/pow(2.0, ip)), 2)*pow(2.0,ip);
+	//		}			
+	//		//hsv_img.at<Vec3b>(y,x) = Vec3b(h1,s1,v1);		
+	//		hsv_img_sg.at<Vec3b>(y,x) = Vec3b(h1,s1,v1);	
+	//	}
+	//}
+	/*vector<Mat> hsv_planes;
+	split(hsv_img,hsv_planes);*/
+	//imshow("H - Image", hsv_planes[0]);
+	//waitKey();
+	//imshow("S - Image", hsv_planes[1]);
+	//waitKey();
+	//imshow("V - Image", hsv_planes[2]);
+	//waitKey();
+	//namedWindow("HSV color");
+	/*imshow("HSV",hsv_img);
+	waitKey();
+
+	vector<Mat> hsv_planes1;
+	split(hsv_img_sg,hsv_planes1);*/
+	//imshow("1 H - Image", hsv_planes1[0]);
+	//waitKey();
+	//imshow("1 S - Image", hsv_planes1[1]);
+	//waitKey();
+	//imshow("1 V - Image", hsv_planes1[2]);
+	//waitKey();
+	//namedWindow("1 HSV Image");
+	/*imshow("Significant Bit Image - Image", hsv_img_sg);
+	waitKey();*/
+
+	return 0;
+}
+void rotate(cv::Mat& src, double angle, cv::Mat& dst)
+{
+	int len = std::max(src.cols, src.rows);
+	cv::Point2f pt(len/2., len/2.);
+	cv::Mat r = cv::getRotationMatrix2D(pt, angle, 1.0);
+
+	cv::warpAffine(src, dst, r, cv::Size(len, len));
+}
+int readListDesc(string srcDesc, vector<Mat> &listDesc
+	, vector<MatND> &listHist, vector<Size> &listSize, vector<vector<KeyPoint>> &listKP, vector<string> &listFileNames ){
+
+	cout << "Reading database ..." <<endl;
+	cout<<"Source Dir " <<srcDesc << endl;
+	int imgNum = 0;
+	
+	string srcFile = srcDesc + "\\*_orb.yml";
+	imgNum = GetNamesNE(srcFile, listFileNames, srcDesc);
+	int id = 0;
+
+	for (int i = 0; i < imgNum; i++)
+	{		
+		//cout<<"Reading descriptor from file " << listFileNames[i] <<endl;
+		Mat desc;
+		string file = srcDesc + listFileNames[i] + ".yml";
+		FileStorage fs1(file, FileStorage::READ);	
+
+		//////////////// Get OBJ ID //////////////////////////////////////////////////////
+		//int tmp1 = names[i].find_first_of("_");
+		//int tmp2 = names[i].find_first_of(".");
+		//tmp1 = tmp1<tmp2? tmp1: tmp2;
+		//id = stoi(names[i].substr(0,tmp1));
+
+		//ListIDs.push_back(id);
+
+		fs1["feature_descriptors"] >> desc;		
+		listDesc.push_back(desc);
+		fs1.release();
+	}
+	if(hist_cmp){
+		vector<string> names;
+		srcFile = srcDesc + "\\*_hist.yml";
+		imgNum = GetNamesNE(srcFile, names, srcDesc);	
+
+		MatND hist;
+		for (int i = 0; i < imgNum; i++)
+		{		
+			FileStorage fs2(srcDesc + names[i] + ".yml", FileStorage::READ);			
+			fs2["histogram_descriptors"] >> hist;		
+			listHist.push_back(hist);
+			fs2.release();
+		}
+
+		srcFile = srcDesc + "\\*_kp.yml";
+		imgNum = GetNamesNE(srcFile, names, srcDesc);	
+		vector<KeyPoint> kp;	
+		for (int i = 0; i < imgNum; i++){
+
+			FileStorage fs4(srcDesc + names[i] + ".yml", FileStorage::READ);			
+			FileNode kptFileNode = fs4["keypoint"];
+			read( kptFileNode, kp );		
+			listKP.push_back(kp);
+			fs4.release();
+
+		}
+
+		FileStorage fs3(srcDesc + "All_sizeList.yml", FileStorage::READ);	
+		fs3["image_size"] >> listSize;
+		fs3.release();
+
+	}
+	
+	return 0;
+}
+
+vector< DMatch > filterGoodMatches(vector< vector<DMatch> > matches){
+
+	//timer tE_timer;
+	//tE_timer.Start();
+	std::vector< DMatch > good_matches;
+	good_matches.reserve(matches.size());
+	
+	for( int i = 0; i < matches.size(); i++ )
+	{		
+		if(matches[i].size() < 2)
+			continue;
+
+		DMatch &m1 = matches[i][0];
+		DMatch &m2 = matches[i][1];
+#ifdef NUM_NEAREST_4
+		DMatch &m3 = matches[i][2];
+		DMatch &m4 = matches[i][3];
+#endif
+
+		if(m1.distance <= MATCH_RATIO*m2.distance){
+			good_matches.push_back(m1);
+		}
+#ifdef NUM_NEAREST_4
+
+		else if(m2.distance <= MATCH_RATIO*m3.distance){
+			good_matches.push_back(m2);
+		}else if(m3.distance <= MATCH_RATIO*m4.distance){
+			good_matches.push_back(m3);
+		}
+#endif
+	}
+
+	//clock_t tend = tE_timer.GetTicks();
+	//cout << "Good Match Finding Time: " << tend << endl;
+	//cout << "1- Good matches: " << good_matches.size();
+	return good_matches;
+}
+vector<DMatch> matchAndFilter(Mat descriptors_1, Mat descriptors_2){
+	
+//	// sol 1: 
+	vector< vector<DMatch> > matches;
+	vector< DMatch > good_matches;
+	
+#ifdef NUM_NEAREST_4
+	matcher.knnMatch(descriptors_1,descriptors_2,matches,4);
+#else
+	matcher.knnMatch(descriptors_1,descriptors_2,matches,2);
+#endif
+		
+	good_matches = filterGoodMatches(matches);
+	return good_matches;
+	
+	//// sol 2:
+	//vector<DMatch> stable_matches;
+	//getStableMatches(descriptors_1, descriptors_2, stable_matches);
+	//return stable_matches;
+}
+
+int getStableMatches(Mat desc1, Mat desc2, vector<DMatch> &stable_matches){
+
+	vector< vector<DMatch> > matches;
+	vector< DMatch > good_matches;
+
+#ifdef NUM_NEAREST_4
+	matcher.knnMatch(desc1,desc2,matches,4);
+#else 
+	matcher.knnMatch(desc1,desc2,matches,2);
+#endif
+	good_matches = filterGoodMatches(matches);
+	int index1 = -1;
+	int index2 = -1;
+	vector<double> dists;
+	vector<DMatch> stable_matches_all;
+
+	//double dist_bf = 0, dist_af = 0;
+
+	for(int i = 0; i < good_matches.size(); i++){
+
+		//dist_bf = good_matches[i].distance;/////////////////////test
+
+		index1 = good_matches[i].queryIdx;
+		index2 = good_matches[i].trainIdx;
+		vector< vector<DMatch> > matches_tmp;
+		Mat desc_tmp = desc2.row(index2);
+#ifdef NUM_NEAREST_4
+		matcher.knnMatch(desc_tmp,desc1,matches_tmp,4);
+		if(matches_tmp[0].size() < 4)
+			continue;
+#else 
+		matcher.knnMatch(desc_tmp,desc1,matches_tmp,2);
+		if(matches_tmp[0].size() < 2)
+			continue;
+#endif
+		
+		DMatch &m1 = matches_tmp[0][0];
+		DMatch &m2 = matches_tmp[0][1];
+#ifdef NUM_NEAREST_4
+		DMatch &m3 = matches_tmp[0][2];
+		DMatch &m4 = matches_tmp[0][3];
+#endif
+		if(m1.distance <= MATCH_RATIO*m2.distance && m1.trainIdx==index1){
+			stable_matches_all.push_back(good_matches[i]);
+			dists.push_back(good_matches[i].distance);
+			//dist_af = m1.distance;///////////test
+			//cout << endl << "------------stable matches idx: 1" <<endl;
+		}
+#ifdef NUM_NEAREST_4
+
+		else if(m2.distance <= MATCH_RATIO*m3.distance && m2.trainIdx==index1){
+			stable_matches_all.push_back(good_matches[i]);
+			dists.push_back(good_matches[i].distance);
+
+			//dist_af = m2.distance;///////////test
+			//cout << endl << "------------stable matches idx: 2" <<endl;
+
+		}else if(m3.distance <= MATCH_RATIO*m4.distance){
+			stable_matches_all.push_back(good_matches[i]);
+			dists.push_back(good_matches[i].distance);
+
+			//dist_af = m3.distance;///////////test
+			//cout << endl << "------------stable matches idx: 3" <<endl;
+		}
+#endif
+		//else{
+		//	cout << endl<< "Not stable-------------" <<endl;
+		//}
+		//cout << endl <<"dist_bf::"<< dist_bf << endl << "dist_af::" << dist_af << endl;/////////////////test
+	}
+	
+	if(!stable_matches_all.size()) return -1;
+	vector<int> dists_idx;
+	sortIdx(dists,dists_idx,CV_SORT_EVERY_ROW+CV_SORT_ASCENDING);
+	int ds = dists_idx.size();
+	for(int i=0;i < min(MAX_STABLE_MATCHES,ds); i++){
+	//for(int i=0;i < ds; i++){
+		stable_matches.push_back(stable_matches_all[dists_idx[i]]);
+	}	
+	//cout <<endl << "Stable matches: " << stable_matches.size() << endl;
+	return 0;
+}
+void unsharpMask(cv::Mat& im) 
+{
+	Mat tmp;
+	GaussianBlur(im, tmp, cv::Size(3,3), 3);
+	//addWeighted(im, 1.5, tmp, -0.5, 0, im);	
+	im = 2*im - 0.9*tmp;
+}
+
+MatND mcalculateHist(Mat hsv_base){
+
+	/// Using 30 bins for hue and 32 for saturation
+	int h_bins = 25; int s_bins = 35; int v_bins = 25;
+	int histSize[] = { h_bins, s_bins, v_bins };
+
+	// hue varies from 0 to 256, saturation from 0 to 180
+	float h_ranges[] = { 0, 180 };
+	float s_ranges[] = { 0, 256 };
+	float v_ranges[] = { 0, 180 };
+
+	const float* ranges[] = { h_ranges, s_ranges, v_ranges };
+
+	// Use the o-th and 1-st channels
+	int channels[] = {0, 1, 2};
+	/// Histograms
+	MatND hist_base;
+
+	/// Calculate the histograms for the HSV images
+	calcHist( &hsv_base, 1, channels, Mat(), hist_base, 2, histSize, ranges, true, false );
+	normalize( hist_base, hist_base, 0, 1, NORM_MINMAX, -1, Mat() );
+	
+	return hist_base;
+
+}
+double compareHistToDB(vector<DMatch> &good_matches, 
+	vector<KeyPoint> keypoints_1, vector<KeyPoint> keypoints_2, 
+	Mat query_hsv_img, Size db_img_size, MatND db_hist){
+
+#ifdef SHOW_LOG
+	cout << "Compare hist" << endl;
+#endif
+
+	std::vector<Point2f> obj;
+	std::vector<Point2f> scene;
+
+	for( int i = 0; i < good_matches.size(); i++ )
+	{
+		//-- Get the keypoints from the good matches
+#ifdef SHOW_LOG
+		cout << endl  << "query index" << good_matches[i].queryIdx << " - " << keypoints_1.size() << endl;
+		cout << endl  << "train index" << good_matches[i].trainIdx << " - " << keypoints_2.size() << endl;
+#endif
+		scene.push_back( keypoints_1[ good_matches[i].queryIdx ].pt );
+		obj.push_back( keypoints_2[ good_matches[i].trainIdx ].pt );
+	}
+
+	// number of keypoints should be greater than 5 to find the epipo plane
+#ifdef SHOW_LOG
+	cout << "Find homography" << endl; //test
+#endif
+	Mat mask;
+	Mat H = findHomography( obj, scene, CV_RANSAC, 3, mask );
+	//Mat H = findHomography( obj, scene, 0 );
+
+	//-- Get the corners from the image_1 ( the object to be "detected" )
+	//std::vector<Point2f> obj_corners(4);
+	//obj_corners[0] = cvPoint(0,0); 
+	//obj_corners[1] = cvPoint( db_img_size.width, 0 );
+	//obj_corners[2] = cvPoint( db_img_size.width, db_img_size.height ); 
+	//obj_corners[3] = cvPoint( 0, db_img_size.height);
+#ifdef SHOW_LOG
+	//int a = mask[0];
+	//cout << "TEST " << a << endl;
+#endif
+	// remove outier
+	std::vector<Point2f> nobj;
+	for(int i = 1; i < mask.rows; i++){
+		if(mask.data[i])
+			nobj.push_back(obj[i]);
+	}
+	// adding more key-point in object
+	nobj.push_back(cvPoint(0,0));
+	nobj.push_back(cvPoint( db_img_size.width, 0 ));
+	nobj.push_back(cvPoint( db_img_size.width, db_img_size.height ));
+	nobj.push_back(cvPoint( 0, db_img_size.height));
+	/*obj.push_back(cvPoint(0,0));
+	obj.push_back(cvPoint( db_img_size.width, 0 ));
+	obj.push_back(cvPoint( db_img_size.width, db_img_size.height ));
+	obj.push_back(cvPoint( 0, db_img_size.height));*/
+	std::vector<Point2f> scene_corners(obj.size());
+
+	perspectiveTransform( nobj, scene_corners, H);
+
+	//perspectiveTransform( obj, scene_corners, H);
+	//perspectiveTransform( obj, scene_corners, H);
+
+	// estimate convex hull arround scene corner
+	RNG rng(12345);
+	vector<Point2f> hull;
+	convexHull(scene_corners, hull);
+
+	// test
+	//Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
+	//Mat gray_img;
+	//cvtColor(query_hsv_img, gray_img,CVHSV2GRAY);
+	//line( gray_img, hull[0] , hull[1], Scalar(0, 255, 0), 4 );
+	//line( gray_img, hull[1] , hull[2], Scalar( 0, 255, 0), 4 );
+	//line( gray_img, hull[2] , hull[3], Scalar( 0, 255, 0), 4 );
+	//line( gray_img, hull[3] , hull[0], Scalar( 0, 255, 0), 4 );
+	////drawContours(query_hsv_img, hull,1,color,1,8, vector<Vec4i>(), 0, Point() );
+	//imshow("Convex hull", gray_img);
+	//waitKey();
+	vector<DMatch> new_gmatches;
+	
+	////// remove wrong matches	
+	//std::cout << "------Remove wrong matches -----------" << endl;
+	for(int im = 0; im < good_matches.size(); im++){					
+		//if(pointPolygonTest(scene_corners, keypoints_1[good_matches[im].queryIdx].pt, false) >= 0){
+		if( mask.data[im] != NULL){
+			new_gmatches.push_back(good_matches[im]);
+			//cout << endl << "mask: " << mask.data[im] << endl;
+		}
+		/*else{
+			cout << "------i Remove wrong matches -----------" << endl;
+		}*/
+	}
+	
+	good_matches = new_gmatches;	
+	//cout << "Num of good matches after removing: " << new_gmatches.size() << endl;
+
+	// 1. Extract ROI 	
+	Mat vec_roi = extractROIColor(hull,query_hsv_img);
+	/*imshow("After extract ROI", query_hsv_img);
+	waitKey(0);*/
+	if(vec_roi.rows < 20)	return -0.1;
+
+	// 2. Compute histogram
+	if(vec_roi.cols == 0) return -0.1;
+	MatND query_hist = mcalculateHist(vec_roi);						
+
+	//////////////////////////////////////////////////////////////////////////
+	// 3. Compare histogram	
+	double hist_correl = compareHist(query_hist, db_hist, CV_COMP_CORREL);
+	
+	//cout << endl<<"Histogram distance: "<< hist_correl<<endl;
+	/*if(hist_correl > HIST_CORREL_THRESHOLD && hist_correl <= 1)
+		return 1;*/	
+#ifdef SHOW_LOG
+	cout << endl << "Histogram corell: " << hist_correl << endl;
+#endif
+
+	return hist_correl;
+}
+Mat extractROIColor(vector<Point2f> scene_corners,Mat img){
+		
+	Vec3b hsv_int;
+	double hsv;
+	Mat vec_roi;
+#ifdef SHOW_LOG
+	cout << endl << "extract ROI" << endl;
+#endif
+	Rect bd = boundingRect(scene_corners);
+	
+	// customize rectangle to inside image
+	if(bd.x < 0){
+		bd.width += bd.x;
+		bd.x = 0;		
+		if (bd.width <= 0) return vec_roi;
+
+	}else if(bd.x > img.cols){
+		bd.width += img.cols-bd.x;
+		bd.x = img.cols;		
+		if (bd.height <= 0) return vec_roi;
+	}
+
+	if(bd.y < 0){
+		bd.height += bd.y;
+		bd.y = 0;
+	}else if(bd.y > img.rows){
+		bd.height += img.rows-bd.y;
+		bd.y = img.rows;
+	}
+	
+	if(bd.x+bd.width > img.cols) 
+		bd.width += img.cols-(bd.x+bd.width)-1;
+	if(bd.y+bd.height > img.rows)
+		bd.height += img.rows-(bd.y+bd.height)-1;
+
+	/*// checking ROI Image extraction
+	Mat image_roi = img(bd);
+	imshow("ROI Image",image_roi);
+	waitKey(0);
+	return colors;*/
+	Mat image_roi = img;
+
+	for(int ix=bd.x; ix<bd.x+bd.width; ix++){
+		for(int iy=bd.y; iy<bd.y+bd.height; iy++){
+
+			if(pointPolygonTest(scene_corners, Point2f(ix,iy), false) >= 0)
+				vec_roi.push_back(img.at<Vec3b>(iy,ix));
+
+			/*if(pointPolygonTest(scene_corners, Point2f(ix,iy), false) < 0)
+				image_roi.at<Vec3b>(iy,ix) = Vec3b(0,0,0);		*/		
+		}
+	}
+	//cout << "Image roi size: " << image_roi.size()<<endl;
+	//imshow("Object",image_roi);
+	//waitKey(0);
+
+	return vec_roi;
+}
+void myResize(Mat &img){
+	Size im_size = img.size();
+
+	// resize image
+	im_size = img.size();
+
+	double max_size = im_size.height;
+	double rs_ratio = 1;
+
+	if(im_size.width > im_size.height){
+		max_size = im_size.width;		
+	}
+	rs_ratio = MAX_HEIGHT_WIDTH_IMG/max_size;
+
+	Size new_size(0,0);
+	new_size.width = im_size.width*rs_ratio;
+	new_size.height = im_size.height*rs_ratio;
+
+	resize(img,img,new_size,0,0);
+}
